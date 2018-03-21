@@ -1,0 +1,19 @@
+Dependancies:
+watchdog
+
+Todo:
+
+
+
+Initial rough notes:
+	Check JSON for state
+	Build Queues/Semaphores
+	while running
+		if watched folder changes
+			check for ini
+			File name sanitization
+			Put file in queue
+		Check encode processes
+			if not max encodes running;
+				start encode
+		delay some time

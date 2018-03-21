@@ -1,0 +1,28 @@
+{
+    "watch_dir" : "/Media/Test/Process",
+    "output_dir" : "/Media/Test/Done",
+    "name_log" : "/Media/Test/Process/name_log.json",
+    "number_encodes" : 8,
+    "threads" : "16",
+    "known_extensions" : ["avi", "mp4", "VOB", "mkv"],
+    "video_encode_options" : {
+        "c:v" : "libvpx-vp9",
+        "b:v" : "0",
+        "crf" : "33",
+        "tile-columns" : "6",
+        "frame-parallel" : "1",
+        "f" : "webm"
+    },
+    "p1_opts" : {
+        "pass" : "1",
+        "an" : "",
+        "speed" : "4"
+    },
+    "p2_opts" : {
+        "pass" : "2",
+        "auto-alt-ref" : "1",
+        "lag-in-frames" : "25",
+        "c:a" : "libvorbis", 
+        "q:a" : "3"
+    }
+}
