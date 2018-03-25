@@ -52,5 +52,6 @@ This file is a json that needs to be in the directory controller is running from
 }
 
 # Usage
-Launch with python3 controller.py
+This package was written for python3. There are no options passed in. All configuration comes from the config.json file.
+Run `python3 controller.py`
 
