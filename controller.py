@@ -1,13 +1,12 @@
 # TODO: custom config files, this is tricky because you have to relate the config file to the input file somehow.
-# TODO: remove extra prints and verify python 3 compatibility
+# TODO: Add distributed support
+# TODO: Actually use the configuration information to drive the encodes
+# TODO: Add the ability to continue from a crash (remove files from names_file.json)
 
 
-import sys
 import os
-import time
 import json
 from utilities import dir_watch
-import multiprocessing
 import shutil
 import watchdog
 
@@ -15,52 +14,81 @@ import uuid
 import threading
 import tempfile
 from ffmpy import FFmpeg
+import datetime
 
-modified_events = [watchdog.events.FileModifiedEvent, watchdog.events.FileCreatedEvent]
+trigger_events = [watchdog.events.FileModifiedEvent, watchdog.events.FileCreatedEvent]
+
+
+# class EncodeRestarter:
+#     def __init__(self, config):
+    # watcher.event_handler.dispatch(watchdog.events.FileModifiedEvent)
+        # Rename non-webm files back to original name
+        # Read in config, move non-.webm files to a temp folder
+        # Delete orphaned .webm files
+        # start watcher, move files out of temp folder into process folder
+
 
 
 def vp9_encode_starter(sem, safe_name, starting_name, config):
         out_file = ".".join(safe_name.split(".")[:-1]) + ".webm"
         finished_name = ".".join(starting_name.split(".")[:-1]) + ".webm"
+        # Video encode options
+        ve = config["video_encode_options"]
+        p1 = config["p1_opts"]
+        p2 = config["p2_opts"]
         temp = tempfile.NamedTemporaryFile()
+
+        # Create base command
+        cmd = ["-{} {}".format(key, ve[key]) for key in ve.keys()]
+        # Add pass log file to base command
+        cmd.insert(-3, "-passlogfile " + temp.name)
+        cmd.append("-y")
+        # print("cmd: ", cmd)
+        # Create first pass command with part1 options
+        part1_specific_options = ["-{} {}".format(key, p1[key]) for key in p1.keys()]
+        # print("part1_so: ", part1_specific_options)
+        part1_cmd = cmd[:-2] + part1_specific_options + cmd[-2:]
+        # Join list to create cmd string
+        part1_cmd = " ".join(part1_cmd)
+
+        # Create second pass command with part2 options
+        part2_specific_options = ["-{} {}".format(key, p2[key]) for key in p2.keys()]
+        part2_cmd = cmd[:-2] + part2_specific_options + cmd[-2:]
+        # Join list to create cmd string
+        part2_cmd = " ".join(part2_cmd)
+
+
+        # Command format:
+        # part1_cmd ="-c:v libvpx-vp9 -pass 1 -passlogfile " + temp.name + " -b:v 0 -crf 33 \
+                #                         -threads 8 -speed 4 -tile-columns 6 -frame-parallel 1 -an -f webm -y"
+        # part2_cmd = "-c:v libvpx-vp9 -pass 2 -passlogfile " + temp.name + " -b:v 0 -crf 33 \
+        #                             -threads 8 -speed 1 -tile-columns 6 -frame-parallel 1 \
+        #                             -auto-alt-ref 1 -lag-in-frames 25 -c:a libvorbis -q:a 3 -y"
         try:
-            # ./ffmpeg -i $1 -c:v libvpx-vp9 -pass 1 -passlogfile $PASSFILE -b:v 0 -crf 33 -threads 12 -speed 4 -tile-columns 6 -frame-parallel 1 -an -f webm /dev/null -y
-            # ./ffmpeg -i $1 -c:v libvpx-vp9 -pass 2 -passlogfile $PASSFILE -b:v 0 -crf 33 -threads 12 -speed 2 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25 -c:a libvorbis -q:a 3 -f webm $2 -y
+            # print("part1: ", part1_cmd)
             convert_part1 = FFmpeg(
                 inputs={safe_name: '-hide_banner -loglevel panic'},
-                outputs={"/dev/null": "-c:v libvpx-vp9 -pass 1 -passlogfile " + temp.name + " -b:v 0 -crf 33 \
-                                    -threads 8 -speed 4 -tile-columns 6 -frame-parallel 1 -an -f webm -y"}
+                outputs={"/dev/null": part1_cmd}
             )
+            # print("part2: ", part2_cmd)
             convert_part2 = FFmpeg(
                 inputs={safe_name: '-hide_banner -loglevel panic'},
-                outputs={out_file: "-c:v libvpx-vp9 -pass 2 -passlogfile " + temp.name + " -b:v 0 -crf 33 \
-                                    -threads 8 -speed 1 -tile-columns 6 -frame-parallel 1 \
-                                    -auto-alt-ref 1 -lag-in-frames 25 -c:a libvorbis -q:a 3 -y"}
+                outputs={out_file: part2_cmd}
             )
-
-            part1 = multiprocessing.Process(target=convert_part1.run)
-            part2 = multiprocessing.Process(target=convert_part2.run)
 
             print("Entering sem.\nWorking on: ", finished_name)
             # Limit encodes started by waiting for semaphore
             with sem:
+                # print("Temp file:1 ", temp.name)
                 print("Starting Pass 1. Working on: ", finished_name)
-                print("Temp file: ", temp.name)
-
-                # part1.start()
-                print("running...", finished_name)
+                start_time = datetime.datetime.now()
                 convert_part1.run()
-                # part1.join()
+
                 print("Starting Pass 2. Working on: ", finished_name)
                 convert_part2.run()
-                # part2.start()
-                # part2.join()
-            # print("Starting Pass 1. Working on: ", finished_name)
-            # convert_part1.run()
-            # print("Starting Pass 2. Working on: ", finished_name)
-            # convert_part2.run()
 
-            print("Finished Encoding.")
+            finish_time = datetime.datetime.now() - start_time
+            print("Finished Encoding {}, encode duration: {}".format(finished_name, finish_time))
             print("Moving files...")
             shutil.move(out_file, os.path.join(config["output_dir"], finished_name))
             shutil.move(safe_name, os.path.join(config["output_dir"], "source", starting_name))
@@ -79,11 +107,11 @@ class ChangeManager(object):
         self.config = config
 
     def dispatch(self, event):
-        if type(event) in modified_events:
+        if type(event) in trigger_events:
             
             # Check extension
             extension = event.src_path.split(".")[-1]
-            if extension in self.known_extensions:
+            if extension.lower() in self.known_extensions:
                 print(event)
                 # Check if config exists
 
@@ -98,6 +126,8 @@ class ChangeManager(object):
                 print("Starting thread.")
                 t = threading.Thread(target=vp9_encode_starter, args=(self.encode_sem, new_name, old_base_name, self.config))
                 t.start()
+                # Single thread for testing
+                # vp9_encode_starter(self.encode_sem, new_name, old_base_name, self.config)
 
                 # Update names in case of crash
                 with self.log_sem:
@@ -132,8 +162,15 @@ def main():
     elif not os.path.isdir(temp_path):
         os.makedirs(temp_path)
 
-    # Start dir watcher
+
+
+    # Configure directory watcher
     watcher = dir_watch(config, ChangeManager)
+
+    # Restart orphaned encodes
+    # ToDo: instatiate class, call methods for rename and move operations
+
+    # Start directory watcher
     watcher.start_watch()
     print("Watching %s for changes." % config["watch_dir"])
     # Do stuff

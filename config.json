@@ -1,12 +1,12 @@
 {
-    "watch_dir" : "/Media/Test/Process",
-    "output_dir" : "/Media/Test/Done",
-    "name_log" : "/Media/Test/Process/name_log.json",
-    "number_encodes" : 8,
-    "threads" : "16",
+    "watch_dir" : "/Media/Test/TestProcess",
+    "output_dir" : "/Media/Test/TestDone",
+    "name_log" : "/Media/Test/TestProcess/name_log.json",
+    "number_encodes" : 2,
     "known_extensions" : ["avi", "mp4", "VOB", "mkv"],
     "video_encode_options" : {
         "c:v" : "libvpx-vp9",
+        "threads" : "4",
         "b:v" : "0",
         "crf" : "33",
         "tile-columns" : "6",
