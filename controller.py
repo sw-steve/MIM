@@ -1,6 +1,5 @@
 # TODO: custom config files, this is tricky because you have to relate the config file to the input file somehow.
 # TODO: Add distributed support
-# TODO: Actually use the configuration information to drive the encodes
 # TODO: Add the ability to continue from a crash (remove files from names_file.json)
 
 
@@ -89,6 +88,7 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
 
             finish_time = datetime.datetime.now() - start_time
             print("Finished Encoding {}, encode duration: {}".format(finished_name, finish_time))
+
             print("Moving files...")
             shutil.move(out_file, os.path.join(config["output_dir"], finished_name))
             shutil.move(safe_name, os.path.join(config["output_dir"], "source", starting_name))
@@ -112,8 +112,7 @@ class ChangeManager(object):
             # Check extension
             extension = event.src_path.split(".")[-1]
             if extension.lower() in self.known_extensions:
-                print(event)
-                # Check if config exists
+                # print(event)
 
                 # Rename file
                 old_name = event.src_path
