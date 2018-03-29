@@ -161,6 +161,7 @@ def main():
         return
     with open("./config.json", "r") as f:
         config = json.load(f)
+    known_extensions = config["known_extensions"]
 
     # Sanity Checks
     # Make sure directories exist
@@ -189,7 +190,7 @@ def main():
                 # elif extension == config["target_extension"]:
                 #     # Clean up partial encode files
                 #     os.remove(encode_file)
-            elif extension in  known_extensions:
+            elif extension in known_extensions:
                 # Manually start encode before watching
                 uuid_name = watcher.event_handler.uuid_rename(encode_file)
                 watcher.event_handler.start_encode(uuid_name)
