@@ -148,8 +148,12 @@ class ChangeManager(object):
         # If there is a uuid in the file name do not automatically
         if re.search(uuid_match, event.src_path):
             return
-        if type(event) in trigger_events:              
-            # Check extension
+        if type(event) in trigger_events:
+            # Make sure the file isn't being copied in
+            historicalSize = -1
+            while (historicalSize != os.path.getsize(filename)):
+              historicalSize = os.path.getsize(filename)
+              time.sleep(1)
             self.start_encode(event.src_path)
 
         elif type(event) == watchdog.events.DirModifiedEvent:
