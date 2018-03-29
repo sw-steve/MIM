@@ -5,6 +5,7 @@
 
 import os
 import json
+import time
 from utilities import dir_watch
 import shutil
 import re
@@ -18,15 +19,6 @@ import datetime
 
 trigger_events = [watchdog.events.FileModifiedEvent, watchdog.events.FileCreatedEvent]
 uuid_match = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-
-# class EncodeRestarter:
-#     def __init__(self, config):
-    # watcher.event_handler.dispatch(watchdog.events.FileModifiedEvent)
-        # Rename non-webm files back to original name
-        # Read in config, move non-.webm files to a temp folder
-        # Delete orphaned .webm files
-        # start watcher, move files out of temp folder into process folder
-
 
 
 def vp9_encode_starter(sem, safe_name, starting_name, config):
@@ -118,8 +110,13 @@ class ChangeManager(object):
         extension = encode_file.split(".")[-1]
         if extension.lower() in self.known_extensions:
             # print(event)
-            if re.match(uuid_match, encode_file):
-                old_base_name = self.name_map[encode_file]
+            if re.search(uuid_match, encode_file):
+                try:
+                    old_base_name = self.name_map[encode_file]
+                except KeyError:
+                    print("No known match for ", encode_file)
+                    print("Skipping file...")
+                    return
                 new_name = encode_file
             else:
                 # Rename file
@@ -146,15 +143,22 @@ class ChangeManager(object):
 
     def dispatch(self, event):
         # If there is a uuid in the file name do not automatically
-        if re.search(uuid_match, event.src_path):
+        filename = event.src_path
+        if re.search(uuid_match, filename):
             return
+
         if type(event) in trigger_events:
             # Make sure the file isn't being copied in
-            historicalSize = -1
-            while (historicalSize != os.path.getsize(filename)):
-              historicalSize = os.path.getsize(filename)
-              time.sleep(1)
-            self.start_encode(event.src_path)
+            try:
+                historicalSize = -1
+                while (historicalSize != os.path.getsize(filename)):
+                    time.sleep(2)
+                    historicalSize = os.path.getsize(filename)
+                self.start_encode(filename)
+            except FileNotFoundError:
+                # This can sometimes happen when the scanner runs and hits the same file twice
+                # Once because a copy started and once because a copy finished.
+                return
 
         elif type(event) == watchdog.events.DirModifiedEvent:
             if event.src_path not in self.working_dirs:
@@ -195,8 +199,10 @@ def main():
         for f in files:
             extension = f.split(".")[-1].lower()
             encode_file = os.path.join(root, f)
-            if re.match(uuid_match, f) and extension in known_extensions:
+            if re.search(uuid_match, f) and extension in known_extensions:
                 watcher.event_handler.start_encode(encode_file)
+            elif extension in known_extensions:
+               watcher.event_handler.start_encode(encode_file) 
                 # Commented out for now, might want to keep them, else ffmpeg should over write
                 # elif extension == config["target_extension"]:
                 #     # Clean up partial encode files
