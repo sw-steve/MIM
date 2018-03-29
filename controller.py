@@ -106,22 +106,29 @@ class ChangeManager(object):
         self.encode_sem = threading.Semaphore(config["number_encodes"])
         self.log_sem = threading.Semaphore(1)
         self.config = config
+        # If there is an existing name map, import it
+        if os.path.exists(self.config["name_log"]):
+            with open(self.config["name_log"], 'r') as f:
+                    self.name_map = json.load(f)
 
-    def uuid_rename(self, encode_file):
-        # Rename file
-        old_name = encode_file
-        extension = encode_file.split(".")[-1]
-        old_base_name = os.path.basename(old_name)
-        new_name = os.path.join(os.path.dirname(old_name), str(uuid.uuid4()) + "." + extension)
-        os.rename(old_name, new_name)
-        self.name_map[new_name] = old_base_name
-        return old_base_name
 
     def start_encode(self, encode_file):
+        old_base_name = ""
+        new_name = ""
         extension = encode_file.split(".")[-1]
         if extension.lower() in self.known_extensions:
             # print(event)
-            old_base_name = self.uuid_rename(encode_file)
+            if re.match(uuid_name, encode_file):
+                old_base_name = self.name_map[encode_file]
+                new_name = encode_file
+            else:
+                # Rename file
+                old_name = encode_file
+                extension = encode_file.split(".")[-1]
+                old_base_name = os.path.basename(old_name)
+                new_name = os.path.join(os.path.dirname(old_name), str(uuid.uuid4()) + "." + extension)
+                os.rename(old_name, new_name)
+                self.name_map[new_name] = old_base_name
 
             # Start Convert
             print("Starting thread.")
@@ -185,8 +192,7 @@ def main():
             extension = f.split(".")[-1].lower()
             encode_file = os.path.join(root, f)
             if re.match(uuid_match, f):
-                if extension in known_extensions:
-                    watcher.event_handler.start_encode(encode_file)
+                watcher.event_handler.start_encode(encode_file)
                 # Commented out for now, might want to keep them, else ffmpeg should over write
                 # elif extension == config["target_extension"]:
                 #     # Clean up partial encode files
