@@ -118,7 +118,7 @@ class ChangeManager(object):
         extension = encode_file.split(".")[-1]
         if extension.lower() in self.known_extensions:
             # print(event)
-            if re.match(uuid_name, encode_file):
+            if re.match(uuid_match, encode_file):
                 old_base_name = self.name_map[encode_file]
                 new_name = encode_file
             else:
@@ -191,16 +191,12 @@ def main():
         for f in files:
             extension = f.split(".")[-1].lower()
             encode_file = os.path.join(root, f)
-            if re.match(uuid_match, f):
+            if re.match(uuid_match, f) and extension in known_extensions:
                 watcher.event_handler.start_encode(encode_file)
                 # Commented out for now, might want to keep them, else ffmpeg should over write
                 # elif extension == config["target_extension"]:
                 #     # Clean up partial encode files
                 #     os.remove(encode_file)
-            elif extension in known_extensions:
-                # Manually start encode before watching
-                uuid_name = watcher.event_handler.uuid_rename(encode_file)
-                watcher.event_handler.start_encode(uuid_name)
 
     # Start directory watcher
     watcher.start_watch()
