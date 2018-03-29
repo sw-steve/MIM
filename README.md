@@ -15,12 +15,15 @@ This has been tested on an Ubuntu 16.04 machine. Should work on other linux plat
 
 First, clone this repository
 Install the following dependencies.
-* `sudo pip3 install watchdog`
+ffmpy
+watchdog
+
+* `sudo pip3 install ffmpy watchdog`
 * Install ffmpeg, make sure it has the config specified encoders
 
 Config file setup:
 
-This file is a json that needs to be in the directory controller is running from. Change any of these values to change the configuration.
+Currently this code uses a json file for configuration. This configuration is also configured for vp9 encoding. Change any of these values to change the configuration.
 
 {
     "watch_dir" : "/Media/Test/TestProcess",
@@ -28,6 +31,7 @@ This file is a json that needs to be in the directory controller is running from
     "name_log" : "/Media/Test/Process/name_log.json",
     "number_encodes" : 8,
     "known_extensions" : ["avi", "mp4", "VOB", "mkv"],
+    "target_extension" : "webm",    
     "video_encode_options" : {
         "c:v" : "libvpx-vp9",
         "threads" : "16",

@@ -7,6 +7,7 @@ import os
 import json
 from utilities import dir_watch
 import shutil
+import re
 import watchdog
 
 import uuid
@@ -16,7 +17,7 @@ from ffmpy import FFmpeg
 import datetime
 
 trigger_events = [watchdog.events.FileModifiedEvent, watchdog.events.FileCreatedEvent]
-
+uuid_match = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 
 # class EncodeRestarter:
 #     def __init__(self, config):
@@ -106,34 +107,42 @@ class ChangeManager(object):
         self.log_sem = threading.Semaphore(1)
         self.config = config
 
+    def uuid_rename(self, encode_file):
+        # Rename file
+        old_name = encode_file
+        old_base_name = os.path.basename(old_name)
+        new_name = os.path.join(os.path.dirname(old_name), str(uuid.uuid4()) + "." + extension)
+        os.rename(old_name, new_name)
+        self.name_map[new_name] = old_base_name
+        return old_base_name
+
+    def start_encode(self, encode_file):
+        extension = encode_file.split(".")[-1]
+        if extension.lower() in self.known_extensions:
+            # print(event)
+            old_base_name = self.uuid_rename(encode_file)
+
+            # Start Convert
+            print("Starting thread.")
+            t = threading.Thread(target=vp9_encode_starter, args=(self.encode_sem, new_name, old_base_name, self.config))
+            t.start()
+            # Single thread for testing
+            # vp9_encode_starter(self.encode_sem, new_name, old_base_name, self.config)
+
+            # Update names in case of crash
+            with self.log_sem:
+                with open(self.config["name_log"], 'w') as f:
+                    f.seek(0)
+                    json.dump(self.name_map, f)
+                    f.truncate()
+
     def dispatch(self, event):
-        if type(event) in trigger_events:
-            
+        # If there is a uuid in the file name do not automatically
+        if re.search(uuid_match, event.src_path):
+            return
+        if type(event) in trigger_events:              
             # Check extension
-            extension = event.src_path.split(".")[-1]
-            if extension.lower() in self.known_extensions:
-                # print(event)
-
-                # Rename file
-                old_name = event.src_path
-                old_base_name = os.path.basename(old_name)
-                new_name = os.path.join(os.path.dirname(old_name), str(uuid.uuid4()) + "." + extension)
-                os.rename(old_name, new_name)
-                self.name_map[new_name] = old_base_name
-
-                # Start Convert
-                print("Starting thread.")
-                t = threading.Thread(target=vp9_encode_starter, args=(self.encode_sem, new_name, old_base_name, self.config))
-                t.start()
-                # Single thread for testing
-                # vp9_encode_starter(self.encode_sem, new_name, old_base_name, self.config)
-
-                # Update names in case of crash
-                with self.log_sem:
-                    with open(self.config["name_log"], 'w') as f:
-                        f.seek(0)
-                        json.dump(self.name_map, f)
-                        f.truncate()
+            self.start_encode(event.src_path)
 
         elif type(event) == watchdog.events.DirModifiedEvent:
             if event.src_path not in self.working_dirs:
@@ -146,12 +155,14 @@ class ChangeManager(object):
 def main():
     # Startup
     print("Starting controller...")
+    # Config load
     if not os.path.isfile("./config.json"):
         print("No config file.")
         return
     with open("./config.json", "r") as f:
         config = json.load(f)
 
+    # Sanity Checks
     # Make sure directories exist
     if not os.path.isdir(config["watch_dir"]):
         os.makedirs(config["watch_dir"])
@@ -162,19 +173,37 @@ def main():
         os.makedirs(temp_path)
 
 
-
     # Configure directory watcher
     watcher = dir_watch(config, ChangeManager)
 
     # Restart orphaned encodes
-    # ToDo: instatiate class, call methods for rename and move operations
+    # Scan through files, manually start orphaned encodes and existing files
+    for root, dirs, files in os.walk(config["watch_dir"]):
+        for f in files:
+            extension = f.split(".")[-1].lower()
+            encode_file = os.path.join(root, f)
+            if re.match(uuid_match, f):
+                if extension in known_extensions:
+                    watcher.event_handler.start_encode(encode_file)
+                # Commented out for now, might want to keep them, else ffmpeg should over write
+                # elif extension == config["target_extension"]:
+                #     # Clean up partial encode files
+                #     os.remove(encode_file)
+            elif extension in  known_extensions:
+                # Manually start encode before watching
+                uuid_name = watcher.event_handler.uuid_rename(encode_file)
+                watcher.event_handler.start_encode(uuid_name)
 
     # Start directory watcher
     watcher.start_watch()
     print("Watching %s for changes." % config["watch_dir"])
     # Do stuff
-    input()
-    watcher.stop_watch()
+    try:
+        input()
+    except KeyboardInterrupt:
+        print("Stopping controller...")
+    finally:
+        watcher.stop_watch()
 
 
 if __name__ == "__main__":

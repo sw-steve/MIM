@@ -4,6 +4,7 @@
     "name_log" : "/Media/Test/Process/name_log.json",
     "number_encodes" : 8,
     "known_extensions" : ["avi", "mp4", "VOB", "mkv"],
+    "target_extension" : "webm",
     "video_encode_options" : {
         "c:v" : "libvpx-vp9",
         "threads" : "16",
