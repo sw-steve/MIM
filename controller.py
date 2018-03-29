@@ -110,6 +110,7 @@ class ChangeManager(object):
     def uuid_rename(self, encode_file):
         # Rename file
         old_name = encode_file
+        extension = encode_file.split(".")[-1]
         old_base_name = os.path.basename(old_name)
         new_name = os.path.join(os.path.dirname(old_name), str(uuid.uuid4()) + "." + extension)
         os.rename(old_name, new_name)
