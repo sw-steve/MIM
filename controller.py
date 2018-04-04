@@ -9,13 +9,15 @@ import time
 from utilities import dir_watch
 import shutil
 import re
-import watchdog
-
+import datetime
 import uuid
 import threading
 import tempfile
+import errno
+
 from ffmpy import FFmpeg
-import datetime
+import watchdog
+
 
 trigger_events = [watchdog.events.FileModifiedEvent, watchdog.events.FileCreatedEvent]
 uuid_match = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
@@ -83,16 +85,34 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
             print("Finished Encoding {}, encode duration: {}".format(finished_name, finish_time))
 
             print("Moving files...")
-            shutil.move(out_file, os.path.join(config["output_dir"], finished_name))
-            shutil.move(safe_name, os.path.join(config["output_dir"], "source", starting_name))
+            # Get all the folder paths we care about
+            # The slice at the end removes the trailing '/' that causes os.path.join issues for some reason
+            root_dir = finished_name.replace(os.path.basename(finished_name), "")[1:]
+            finished_name = os.path.basename(finished_name)
+            finished_dir = os.path.join(config["output_dir"], root_dir)
+            starting_name = os.path.basename(starting_name)
+            source_dir = os.path.join(config["output_dir"], "source", root_dir)
+
+            # Make the destination if it doesn't already exist
+            os.makedirs(finished_dir, exist_ok=True)
+            os.makedirs(source_dir, exist_ok=True)
+
+            # Move files to their final destination
+            shutil.move(out_file, os.path.join(finished_dir, finished_name))
+            shutil.move(safe_name, os.path.join(source_dir, starting_name))
+            # Clean up source folder, after we move file out if folder is empty, delete it
+            full_root_dir = os.path.join(config["watch_dir"], root_dir)
+            if not os.listdir(full_root_dir):
+                os.rmdir(full_root_dir)
+
+        except Exception as err:
+            print("Caught exception: ", err)
         finally:
             temp.close()
 
 
 class ChangeManager(object):
     def __init__(self, watch_dir, config):
-        self.working_dirs = []
-        self.working_dirs.append(watch_dir)
         self.known_extensions = config["known_extensions"]  # Filled by dir watch setup
         self.name_map = {}
         self.encode_sem = threading.Semaphore(config["number_encodes"])
@@ -122,17 +142,20 @@ class ChangeManager(object):
                 # Rename file
                 old_name = encode_file
                 extension = encode_file.split(".")[-1]
-                old_base_name = os.path.basename(old_name)
+                old_base_name = old_name.replace(self.config["watch_dir"], "")
                 new_name = os.path.join(os.path.dirname(old_name), str(uuid.uuid4()) + "." + extension)
                 os.rename(old_name, new_name)
                 self.name_map[new_name] = old_base_name
 
             # Start Convert
             print("Starting thread.")
-            t = threading.Thread(target=vp9_encode_starter, args=(self.encode_sem, new_name, old_base_name, self.config))
-            t.start()
+            # Force to launch serially if # of encodes 1
+            if self.config["number_encodes"] != 1:
+                t = threading.Thread(target=vp9_encode_starter, args=(self.encode_sem, new_name, old_base_name, self.config))
+                t.start()
             # Single thread for testing
-            # vp9_encode_starter(self.encode_sem, new_name, old_base_name, self.config)
+            else:
+                vp9_encode_starter(self.encode_sem, new_name, old_base_name, self.config)
 
             # Update names in case of crash
             with self.log_sem:
@@ -142,13 +165,14 @@ class ChangeManager(object):
                     f.truncate()
 
     def dispatch(self, event):
-        # If there is a uuid in the file name do not automatically
+        # If there is a uuid in the file name do not automatically process if everything
+        # goes well the watch_dir is cleanup on startup and we won't have any dispatched uuid files
         filename = event.src_path
         if re.search(uuid_match, filename):
             return
-
+        # Make sure the file isn't being copied in by checking the file size until it doesn't change anymore
         if type(event) in trigger_events:
-            # Make sure the file isn't being copied in
+            # ToDo: make this multithreaded
             try:
                 historicalSize = -1
                 while (historicalSize != os.path.getsize(filename)):
@@ -159,14 +183,22 @@ class ChangeManager(object):
                 # This can sometimes happen when the scanner runs and hits the same file twice
                 # Once because a copy started and once because a copy finished.
                 return
+        # For debugging, print out all unhandled events
+        # else:
+        #     print(event)
 
-        elif type(event) == watchdog.events.DirModifiedEvent:
-            if event.src_path not in self.working_dirs:
-                self.working_dirs.append(event)
-        else:
-            print(event)
-
-
+    def crawl_and_encode(self, crawl_dir):
+        for root, dirs, files in os.walk(crawl_dir):
+            for f in files:
+                extension = f.split(".")[-1].lower()
+                encode_file = os.path.join(root, f)
+                if re.search(uuid_match, f) and extension in self.known_extensions:
+                    self.start_encode(encode_file)
+                elif extension in self.known_extensions:
+                   self.start_encode(encode_file)
+                    # Commented out for now, might want to keep them, else ffmpeg should over write
+                    # elif extension == config["target_extension"]:
+                    #     # Clean up partial encode files
 
 def main():
     # Startup
@@ -195,18 +227,7 @@ def main():
 
     # Restart orphaned encodes
     # Scan through files, manually start orphaned encodes and existing files
-    for root, dirs, files in os.walk(config["watch_dir"]):
-        for f in files:
-            extension = f.split(".")[-1].lower()
-            encode_file = os.path.join(root, f)
-            if re.search(uuid_match, f) and extension in known_extensions:
-                watcher.event_handler.start_encode(encode_file)
-            elif extension in known_extensions:
-               watcher.event_handler.start_encode(encode_file) 
-                # Commented out for now, might want to keep them, else ffmpeg should over write
-                # elif extension == config["target_extension"]:
-                #     # Clean up partial encode files
-                #     os.remove(encode_file)
+    watcher.event_handler.crawl_and_encode(config["watch_dir"])
 
     # Start directory watcher
     watcher.start_watch()
