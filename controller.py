@@ -28,20 +28,20 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
         finished_name = ".".join(starting_name.split(".")[:-1]) + ".webm"
         # Video encode options
         ve = config["video_encode_options"]
-        # p1 = config["p1_opts"]
+        p1 = config["p1_opts"]
         # p2 = config["p2_opts"]
         temp = tempfile.NamedTemporaryFile()
 
         # Create base command
-        cmd = ["-{} {}".format(key, ve[key]) for key in ve.keys()]
+        cmd = ['-{} {}'.format(key, ve[key]) for key in ve.keys()]
         # Add pass log file to base command
         # cmd.insert(-3, "-passlogfile " + temp.name)
         cmd.append("-y")
         # print("cmd: ", cmd)
         # Create first pass command with part1 options
-        # part1_specific_options = ["-{} {}".format(key, p1[key]) for key in p1.keys()]
+        part1_specific_options = ["-{} {}".format(key, p1[key]) for key in p1.keys()]
         # print("part1_so: ", part1_specific_options)
-        # part1_cmd = cmd[:-2] + part1_specific_options + cmd[-2:]
+        part1_cmd = cmd[:-2] + part1_specific_options + cmd[-2:]
         # Join list to create cmd string
         part1_cmd = " ".join(part1_cmd)
 
@@ -53,7 +53,7 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
 
 
         try:
-            # print("part1: ", part1_cmd)
+            print("part1: ", part1_cmd)
             convert_part1 = FFmpeg(
                 inputs={safe_name: '-hide_banner -loglevel panic'},
                 #outputs={"/dev/null": part1_cmd}
