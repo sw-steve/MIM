@@ -28,47 +28,38 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
         finished_name = ".".join(starting_name.split(".")[:-1]) + ".webm"
         # Video encode options
         ve = config["video_encode_options"]
-        p1 = config["p1_opts"]
-        p2 = config["p2_opts"]
+        # p1 = config["p1_opts"]
+        # p2 = config["p2_opts"]
         temp = tempfile.NamedTemporaryFile()
 
         # Create base command
         cmd = ["-{} {}".format(key, ve[key]) for key in ve.keys()]
         # Add pass log file to base command
-        cmd.insert(-3, "-passlogfile " + temp.name)
+        # cmd.insert(-3, "-passlogfile " + temp.name)
         cmd.append("-y")
         # print("cmd: ", cmd)
         # Create first pass command with part1 options
-        part1_specific_options = ["-{} {}".format(key, p1[key]) for key in p1.keys()]
+        # part1_specific_options = ["-{} {}".format(key, p1[key]) for key in p1.keys()]
         # print("part1_so: ", part1_specific_options)
-        part1_cmd = cmd[:-2] + part1_specific_options + cmd[-2:]
+        # part1_cmd = cmd[:-2] + part1_specific_options + cmd[-2:]
         # Join list to create cmd string
         part1_cmd = " ".join(part1_cmd)
 
         # Create second pass command with part2 options
-        part2_specific_options = ["-{} {}".format(key, p2[key]) for key in p2.keys()]
-        part2_cmd = cmd[:-2] + part2_specific_options + cmd[-2:]
-        # Join list to create cmd string
-        part2_cmd = " ".join(part2_cmd)
+        # part2_specific_options = ["-{} {}".format(key, p2[key]) for key in p2.keys()]
+        # part2_cmd = cmd[:-2] + part2_specific_options + cmd[-2:]
+        # # Join list to create cmd string
+        # part2_cmd = " ".join(part2_cmd)
 
 
-        # Command format:
-        # part1_cmd ="-c:v libvpx-vp9 -pass 1 -passlogfile " + temp.name + " -b:v 0 -crf 33 \
-                #                         -threads 8 -speed 4 -tile-columns 6 -frame-parallel 1 -an -f webm -y"
-        # part2_cmd = "-c:v libvpx-vp9 -pass 2 -passlogfile " + temp.name + " -b:v 0 -crf 33 \
-        #                             -threads 8 -speed 1 -tile-columns 6 -frame-parallel 1 \
-        #                             -auto-alt-ref 1 -lag-in-frames 25 -c:a libvorbis -q:a 3 -y"
         try:
             # print("part1: ", part1_cmd)
             convert_part1 = FFmpeg(
                 inputs={safe_name: '-hide_banner -loglevel panic'},
-                outputs={"/dev/null": part1_cmd}
+                #outputs={"/dev/null": part1_cmd}
+                outputs={out_file: part1_cmd}
             )
-            # print("part2: ", part2_cmd)
-            convert_part2 = FFmpeg(
-                inputs={safe_name: '-hide_banner -loglevel panic'},
-                outputs={out_file: part2_cmd}
-            )
+
 
             print("Entering sem.\nWorking on: ", finished_name)
             # Limit encodes started by waiting for semaphore
@@ -78,13 +69,11 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
                 start_time = datetime.datetime.now()
                 convert_part1.run()
 
-                print("Starting Pass 2. Working on: ", finished_name)
-                convert_part2.run()
 
             finish_time = datetime.datetime.now() - start_time
             print("Finished Encoding {}, encode duration: {}".format(finished_name, finish_time))
 
-            print("Moving files...")
+            print(f"Moving {finished_name} ...")
             # Get all the folder paths we care about
             # The slice at the end removes the trailing '/' that causes os.path.join issues for some reason
             root_dir = finished_name.replace(os.path.basename(finished_name), "")[1:]
@@ -109,6 +98,7 @@ def vp9_encode_starter(sem, safe_name, starting_name, config):
             print("Caught exception: ", err)
         finally:
             temp.close()
+            print(f"Done moving {finished_name}")
 
 
 class ChangeManager(object):
